@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>河西走廊 · 内陆河</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style></head>
+<body>
+<canvas id="c" width="2400" height="1180"></canvas>
+<script src="rivers.js"></script>
+<script>
+const W = 2400, H = 1180, B = {w: 93.0, e: 104.8, s: 36.8, n: 42.6};
+const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
+
+// 如果某条河的粒子是"从下游往上游"流，把它改成 true
+const REVERSE = {shiyang: false, heihe: false, shule: false};
+
+const COL = {shiyang: '111,211,255', heihe: '79,157,255', shule: '143,240,230'};
+const TL  = {shiyang: [0, 4], heihe: [4.5, 8.5], shule: [9, 13]};   // 各河出现的时间（秒）
+const SPEED = 0.05, P = 40;                                          // 流速、每条河粒子数
+const CITIES = [['武威', 102.64, 37.93], ['张掖', 100.45, 38.93],
+                ['酒泉', 98.49, 39.73], ['敦煌', 94.66, 40.14]];
+
+function msg(text) {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#ffd24a'; ctx.font = '40px sans-serif'; ctx.fillText(text, 60, 100);
+}
+if (typeof RIVERS === 'undefined') { msg('找不到 rivers.js，请检查文件名和位置'); throw 0; }
+
+const px = ([lo, la]) => [(lo - B.w) / (B.e - B.w) * W, (B.n - la) / (B.n - B.s) * H];
+
+const R = {};
+for (const id in RIVERS) {
+  let c = RIVERS[id].slice(); if (REVERSE[id]) c.reverse();
+  const pts = c.map(px), cum = [0];
+  for (let i = 1; i < pts.length; i++)
+    cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  R[id] = {pts, cum, len: cum[cum.length - 1]};
+}
+function at(r, s) {
+  const d = s * r.len; let i = 1;
+  while (i < r.cum.length - 1 && r.cum[i] < d) i++;
+  const t = (d - r.cum[i-1]) / ((r.cum[i] - r.cum[i-1]) || 1);
+  return [r.pts[i-1][0] + (r.pts[i][0] - r.pts[i-1][0]) * t,
+          r.pts[i-1][1] + (r.pts[i][1] - r.pts[i-1][1]) * t];
+}
+
+const img = new Image();
+img.onerror = () => msg('找不到 hexi_base.png，请检查文件名和位置');
+img.src = 'hexi_base.png';
+let t0 = null;
+window.addEventListener('click', () => { t0 = null; });   // 点击页面 = 重播
+
+function frame(now) {
+  if (t0 === null) t0 = now;
+  const t = ((now - t0) / 1000) % 20;
+  ctx.drawImage(img, 0, 0, W, H);
+
+  for (const id in R) {
+    const [a, b] = TL[id] || [0, 4], rv = Math.min(Math.max((t - a) / (b - a), 0), 1);
+    if (rv <= 0) continue;
+    const r = R[id], col = COL[id] || '120,200,255', d = rv * r.len;
+
+    ctx.strokeStyle = `rgba(${col},0.45)`; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(...r.pts[0]);
+    for (let i = 1; i < r.pts.length && r.cum[i] <= d; i++) ctx.lineTo(...r.pts[i]);
+    ctx.lineTo(...at(r, rv)); ctx.stroke();
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < P; k++) for (let j = 0; j < 4; j++) {
+      const s = (((t * SPEED + k / P - j * 0.004) % 1) + 1) % 1;
+      if (s > rv) continue;
+      const al = Math.min(1, (1 - s) / 0.12) * (1 - j * 0.25);
+      const [x, y] = at(r, s);
+      ctx.fillStyle = `rgba(${col},${al})`;
+      ctx.shadowColor = `rgb(${col})`; ctx.shadowBlur = j === 0 ? 14 : 0;
+      ctx.beginPath(); ctx.arc(x, y, 5 - j, 0, 7); ctx.fill();
+    }
+    ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  ctx.font = '30px "Microsoft YaHei","PingFang SC",sans-serif';
+  for (const [n, lo, la] of CITIES) {
+    const [x, y] = px([lo, la]);
+    ctx.fillStyle = 'rgba(255,210,74,0.35)';
+    ctx.beginPath(); ctx.arc(x, y, 16, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffd24a'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.8)';
+    ctx.strokeText(n, x + 16, y - 12);
+    ctx.fillStyle = '#fff'; ctx.fillText(n, x + 16, y - 12);
+  }
+  requestAnimationFrame(frame);
+}
+img.onload = () => requestAnimationFrame(frame);
+</script>
+</body></html>
